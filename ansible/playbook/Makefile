@@ -9,4 +9,4 @@ true_inventory:
 	echo ${TRUE_INVENTORY}
 
 playbook:
-	ansible-playbook -i inventory/conoha_vps initialize.yml
+	ansible-playbook -i inventory/conoha_vps playbook.yml

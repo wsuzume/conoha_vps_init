@@ -3,7 +3,7 @@
   become: True
   tasks:
     ### create user groups
-    - name: "create admin group"
+    - name: "create admin group (is written in sudoers file from the first)"
       group:
         name: admin
         gid: 5001
@@ -18,21 +18,23 @@
       user:
         name: admin
         uid: 1001
+        group: admin
         create_home: yes
         home: "{{ admin_home }}"
-        group: admin
         password: "{{ admin_password | password_hash('sha512') }}"
         update_password: on_create
+        shell: /bin/bash
 
     - name: "create common user"
       user:
         name: castor
         uid: 2001
+        group: common
         create_home: yes
         home: "{{ castor_home }}"
-        group: common
         password: "{{ castor_password | password_hash('sha512') }}"
         update_password: on_create
+        shell: /bin/bash
 
     ### create user and ssh setting: admin
     - name: "admin: remove ssh config directory"
@@ -159,6 +161,39 @@
         regexp: "^Port"
         insertafter: "^#Port"
         line: "Port {{ new_ssh_port }}"
+
+    ### firewall settings
+    - name: "deny incoming"
+      ufw:
+        default: deny
+        direction: incoming
+
+    - name: "allow SSH ({{ new_ssh_port }})"
+      ufw:
+        rule: allow
+        log: yes
+        port: "{{ new_ssh_port }}"
+
+    - name: "allow HTTP (80/TCP)"
+      ufw:
+        rule: allow
+        proto: tcp
+        port: "80"
+
+    - name: "allow HTTPS (443/TCP)"
+      ufw:
+        rule: allow
+        proto: tcp
+        port: "443"
+
+    - name: "enable firewall"
+      ufw:
+        state: enabled
+
+    ### reboot firewall and sshd
+    - name: "reload ufw"
+      ufw:
+        state: reloaded
 
     - name: "reboot sshd"
       service:
