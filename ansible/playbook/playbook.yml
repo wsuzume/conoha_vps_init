@@ -1,0 +1,166 @@
+- name: Configure VPS
+  hosts: conoha_vps
+  become: True
+  tasks:
+    ### create user groups
+    - name: "create admin group"
+      group:
+        name: admin
+        gid: 5001
+
+    - name: "create common group"
+      group:
+        name: common
+        gid: 5002
+
+    ### create users
+    - name: "create admin user"
+      user:
+        name: admin
+        uid: 1001
+        create_home: yes
+        home: "{{ admin_home }}"
+        group: admin
+        password: "{{ admin_password | password_hash('sha512') }}"
+        update_password: on_create
+
+    - name: "create common user"
+      user:
+        name: castor
+        uid: 2001
+        create_home: yes
+        home: "{{ castor_home }}"
+        group: common
+        password: "{{ castor_password | password_hash('sha512') }}"
+        update_password: on_create
+
+    ### create user and ssh setting: admin
+    - name: "admin: remove ssh config directory"
+      file:
+        path: "{{ admin_home }}/.ssh"
+        state: absent
+
+    - name: "admin: create ssh config directory"
+      become_user: admin
+      file:
+        path: ~/.ssh
+        state: directory
+
+    - name: "admin: copy ssh pubkey to server"
+      become_user: admin
+      copy:
+        src: "~/.ssh/{{ ssh_admin_pubkey }}"
+        dest: "~/.ssh/{{ ssh_admin_pubkey }}"
+
+    - name: "admin: copy ssh pubkey to ansible variable"
+      become_user: admin
+      slurp:
+        path: "~/.ssh/{{ ssh_admin_pubkey }}"
+      register: var_ssh_admin_pubkey
+
+    - name: "admin: add ssh pubkey to authorized keys"
+      become_user: admin
+      lineinfile:
+        create: yes
+        dest: ~/.ssh/authorized_keys
+        line: "{{ var_ssh_admin_pubkey.content | b64decode }}"
+        mode: 0600
+
+    - name: "admin: change ssh config directory mode"
+      file:
+        path: "{{ admin_home }}/.ssh"
+        state: directory
+        mode: 0700
+
+    ### create user and ssh setting: castor
+    - name: "castor: remove ssh config directory"
+      file:
+        path: "{{ castor_home }}/.ssh"
+        state: absent
+
+    - name: "castor: create ssh config directory"
+      become_user: castor
+      file:
+        path: ~/.ssh
+        state: directory
+
+    - name: "castor: copy ssh pubkey to server"
+      become_user: castor
+      copy:
+        src: "~/.ssh/{{ ssh_common_pubkey }}"
+        dest: "~/.ssh/{{ ssh_common_pubkey }}"
+
+    - name: "castor: copy ssh pubkey to ansible variable"
+      become_user: castor
+      slurp:
+        path: "~/.ssh/{{ ssh_common_pubkey }}"
+      register: var_ssh_common_pubkey
+
+    - name: "castor: remove ssh pubkey on server"
+      become_user: castor
+      file:
+        path: "~/.ssh/{{ ssh_common_pubkey }}"
+        state: absent
+
+    - name: "castor: add ssh pubkey to authorized keys"
+      become_user: castor
+      lineinfile:
+        create: yes
+        dest: ~/.ssh/authorized_keys
+        line: "{{ var_ssh_common_pubkey.content | b64decode }}"
+        mode: 0600
+
+    - name: "castor: change ssh config directory mode"
+      file:
+        path: "{{ castor_home }}/.ssh"
+        state: directory
+        mode: 0700
+
+
+    ### SSH security settings
+    - name: "disable password authentication"
+      lineinfile:
+        dest: /etc/ssh/sshd_config
+        regexp: "^PasswordAuthentication"
+        insertafter: "^#PasswordAuthentication"
+        line: "PasswordAuthentication no"
+
+    - name: "disable empty password"
+      lineinfile:
+        dest: /etc/ssh/sshd_config
+        regexp: "^PermitEmptyPasswords"
+        insertafter: "^#PermitEmptyPasswords"
+        line: "PermitEmptyPasswords no"
+
+    - name: "disable challenge response"
+      lineinfile:
+        dest: /etc/ssh/sshd_config
+        regexp: "^ChallengeResponseAuthentication"
+        insertafter: "^#ChallengeResponseAuthentication"
+        line: "ChallengeResponseAuthentication no"
+
+    - name: "disable root login"
+      lineinfile:
+        dest: /etc/ssh/sshd_config
+        regexp: "^PermitRootLogin"
+        insertafter: "^#PermitRootLogin"
+        line: "PermitRootLogin no"
+
+    - name: "enable pubkey authentication"
+      lineinfile:
+        dest: /etc/ssh/sshd_config
+        regexp: "^PubkeyAuthentication"
+        insertafter: "^#PubkeyAuthentication"
+        line: "PubkeyAuthentication yes"
+
+    - name: "change ssh port to {{ new_ssh_port }}"
+      lineinfile:
+        dest: /etc/ssh/sshd_config
+        regexp: "^Port"
+        insertafter: "^#Port"
+        line: "Port {{ new_ssh_port }}"
+
+    - name: "reboot sshd"
+      service:
+        name: sshd
+        state: restarted
